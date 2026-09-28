@@ -1,8 +1,15 @@
 package app.ownit.android;
 
-import android.accessibilityservice.AccessibilityService;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.app.usage.UsageEvents;
+import android.app.usage.UsageStatsManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
@@ -11,7 +18,9 @@ import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.os.Build;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
@@ -19,34 +28,60 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
-import android.view.accessibility.AccessibilityEvent;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
  * OwnIt Guard.
- * - Opening a guarded app (e.g. TikTok) without a visit started in OwnIt sends you to OwnIt instead.
+ * - Opening a guarded app (e.g. TikTok) without a visit started in OwnIt covers it and sends you to OwnIt.
  * - When a visit's time is up while you're still in the app, a full-screen "Time's up" screen covers it
  *   and takes you back to OwnIt.
- * It only looks at which app is in front. It never reads what's on the screen.
+ * It only checks which app is in front (Usage access). It never reads what's on the screen.
  */
-public class GuardService extends AccessibilityService {
+public class GuardService extends Service {
 
     private static final int COUNTDOWN_SECONDS = 8;
+    private static final String CHANNEL = "guard";
+    private static final int NOTIFICATION_ID = 3;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable timeUp = this::onTimeUp;
     private String foreground = "";
+    private long lastEventTime = 0;
     private long lastBlock = 0;
     private View overlay;
     private TextView countdownView;
     private int secondsLeft;
+    private boolean running = false;
+
+    /** Starts the Guard if both permissions are granted. Safe to call often. */
+    static void startIfReady(Context c) {
+        if (!Perms.guardReady(c)) return;
+        try {
+            Intent i = new Intent(c, GuardService.class);
+            if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i);
+            else c.startService(i);
+        } catch (Exception ignored) { }
+    }
+
+    private final Runnable poll = new Runnable() {
+        @Override public void run() {
+            if (!running) return;
+            long next = 700;
+            try {
+                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                if (pm != null && !pm.isInteractive()) next = 3000;
+                else check();
+            } catch (Exception ignored) { }
+            handler.postDelayed(this, next);
+        }
+    };
+
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (overlay == null) return;
             secondsLeft--;
-            if (secondsLeft <= 0) { goBackToOwnIt(); return; }
+            if (secondsLeft <= 0) { goBackToOwnIt("timeup", null); return; }
             countdownView.setText("Taking you back to OwnIt in " + secondsLeft + "…");
             if (secondsLeft == 4) buzz();
             handler.postDelayed(this, 1000);
@@ -54,69 +89,98 @@ public class GuardService extends AccessibilityService {
     };
 
     @Override
-    protected void onServiceConnected() {
-        super.onServiceConnected();
-        // Just switched on from OwnIt's setup screen: bring the person straight back to OwnIt.
-        if (GuardState.consumeSetupPending(this)) handler.postDelayed(() -> openOwnIt("guard-on", null), 400);
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        Notification n = guardNotification();
+        try {
+            if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            else startForeground(NOTIFICATION_ID, n);
+        } catch (Exception e) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+        if (!Perms.guardReady(this)) { stopSelf(); return START_NOT_STICKY; }
+        if (!running) {
+            running = true;
+            lastEventTime = System.currentTimeMillis() - 10_000;
+            handler.post(poll);
+        }
+        return START_STICKY;
     }
 
-    @Override
-    public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event == null || event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
-        CharSequence pkgCs = event.getPackageName();
-        if (pkgCs == null) return;
-        String pkg = pkgCs.toString();
-        // The system bar and keyboards report events while another app is still in front: ignore them.
-        if (pkg.equals("com.android.systemui") || pkg.contains("inputmethod") || pkg.contains("keyboard")) return;
-        foreground = pkg;
-        if (pkg.equals(getPackageName())) return;
-
-        String platform = GuardState.platformFor(pkg);
-        if (platform == null || !GuardState.guarded(this).contains(platform)) return;
-
-        if (GuardState.isAllowed(this, platform)) {
-            scheduleTimeUp();
+    /** Finds the app in front, then blocks it, lets it through, or ends the visit. */
+    private void check() {
+        if (!Perms.guardReady(this)) { stopSelf(); return; }
+        updateForeground();
+        if (overlay != null) return;
+        String pkg = foreground;
+        if (pkg.isEmpty() || pkg.equals(getPackageName())) {
+            timeUpIfDue(false);
             return;
         }
-        if (overlay != null) return;
+        String platform = GuardState.platformFor(pkg);
+        boolean guarded = platform != null && GuardState.guarded(this).contains(platform);
+        if (!guarded) { timeUpIfDue(false); return; }
+
+        if (platform.equals(GuardState.allowedPlatform(this)) && GuardState.until(this) > 0) {
+            timeUpIfDue(true);            // inside the allowed visit: only act when time is up
+            return;
+        }
         long now = System.currentTimeMillis();
         if (now - lastBlock < 1500) return;
         lastBlock = now;
-        // Opened directly: send them to OwnIt first.
-        performGlobalAction(GLOBAL_ACTION_HOME);
-        final String p = platform;
-        handler.postDelayed(() -> openOwnIt("blocked", p), 300);
+        showBlocked(platform);
     }
 
-    private void scheduleTimeUp() {
-        handler.removeCallbacks(timeUp);
-        long delay = GuardState.until(this) - System.currentTimeMillis();
-        handler.postDelayed(timeUp, Math.max(0, delay));
-    }
-
-    private void onTimeUp() {
-        long left = GuardState.until(this) - System.currentTimeMillis();
-        if (left > 500) { scheduleTimeUp(); return; } // the visit was extended
-        String platform = GuardState.platformFor(foreground);
-        boolean stillInApp = platform != null && platform.equals(GuardState.allowedPlatform(this));
+    private void timeUpIfDue(boolean inAllowedApp) {
+        long until = GuardState.until(this);
+        if (until <= 0 || System.currentTimeMillis() < until) return;
         GuardState.expire(this);
-        if (stillInApp) showOverlay();
+        if (inAllowedApp) showTimeUp();
         else Notifier.timeUp(this, GuardState.kind(this), GuardState.intent(this));
     }
 
-    private void showOverlay() {
-        if (overlay != null) return;
-        WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
-        if (wm == null) { goBackToOwnIt(); return; }
+    private void updateForeground() {
+        UsageStatsManager usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
+        if (usm == null) return;
+        long now = System.currentTimeMillis();
+        long from = Math.max(now - 3_600_000L, Math.min(lastEventTime, now - 2000));
+        UsageEvents events = usm.queryEvents(from, now + 1000);
+        UsageEvents.Event e = new UsageEvents.Event();
+        String latest = null;
+        long latestTime = 0;
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e);
+            int type = e.getEventType();
+            if ((type == UsageEvents.Event.ACTIVITY_RESUMED || type == UsageEvents.Event.MOVE_TO_FOREGROUND)
+                    && e.getTimeStamp() >= latestTime) {
+                latest = e.getPackageName();
+                latestTime = e.getTimeStamp();
+            }
+        }
+        if (latest != null) {
+            foreground = latest;
+            lastEventTime = latestTime;
+        }
+    }
 
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setGravity(Gravity.CENTER);
-        box.setBackgroundColor(Color.parseColor("#F5061513"));
-        int pad = dp(28);
-        box.setPadding(pad, pad, pad, pad);
-        box.setClickable(true);
+    // ---------------------------------------------------------------- screens
 
+    private void showBlocked(String platform) {
+        String name = "tiktok".equals(platform) ? "TikTok" : "instagram".equals(platform) ? "Instagram" : "YouTube";
+        LinearLayout box = screen();
+        box.addView(text("∞", 64, "#F0B155", true));
+        box.addView(text("Not so fast", 40, "#E8F3F0", true));
+        box.addView(text("You opened " + name + " directly. Say what you're looking for first, and OwnIt will take you straight to it.", 18, "#93B3AC", false));
+        Button go = button("Open OwnIt", true);
+        go.setOnClickListener(v -> goBackToOwnIt("blocked", platform));
+        box.addView(go);
+        if (!addOverlay(box)) { openOwnIt("blocked", platform); return; }
+        // Open OwnIt right away while this screen covers the app.
+        handler.postDelayed(() -> goBackToOwnIt("blocked", platform), 900);
+    }
+
+    private void showTimeUp() {
+        LinearLayout box = screen();
         String kind = GuardState.kind(this);
         String intent = GuardState.intent(this);
         box.addView(text("∞", 72, "#F0B155", true));
@@ -128,35 +192,51 @@ public class GuardService extends AccessibilityService {
         box.addView(countdownView);
 
         Button back = button("Back to OwnIt", true);
-        back.setOnClickListener(v -> goBackToOwnIt());
+        back.setOnClickListener(v -> goBackToOwnIt("timeup", null));
         box.addView(back);
         if (!GuardState.extended(this)) {
             Button more = button("I need 2 more minutes", false);
             more.setOnClickListener(v -> {
                 GuardState.extend(this, 2 * 60 * 1000L);
                 removeOverlay();
-                scheduleTimeUp();
             });
             box.addView(more);
         }
-
-        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.TRANSLUCENT);
-        try {
-            wm.addView(box, lp);
-            overlay = box;
-        } catch (Exception e) {
-            goBackToOwnIt();
-            return;
-        }
+        if (!addOverlay(box)) { Notifier.timeUp(this, kind, intent); openOwnIt("timeup", null); return; }
         buzz();
         secondsLeft = COUNTDOWN_SECONDS;
         handler.removeCallbacks(tick);
         handler.postDelayed(tick, 1000);
+    }
+
+    private LinearLayout screen() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setBackgroundColor(Color.parseColor("#FA061513"));
+        int pad = dp(28);
+        box.setPadding(pad, pad, pad, pad);
+        box.setClickable(true);
+        return box;
+    }
+
+    private boolean addOverlay(View v) {
+        if (overlay != null) return true;
+        WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+        if (wm == null || !Perms.overlay(this)) return false;
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT);
+        try {
+            wm.addView(v, lp);
+            overlay = v;
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void removeOverlay() {
@@ -169,10 +249,12 @@ public class GuardService extends AccessibilityService {
         overlay = null;
     }
 
-    private void goBackToOwnIt() {
-        removeOverlay();
-        performGlobalAction(GLOBAL_ACTION_HOME);
-        handler.postDelayed(() -> openOwnIt("timeup", null), 300);
+    /** Opens OwnIt while the cover screen is still showing, then removes the cover. */
+    private void goBackToOwnIt(String action, String platform) {
+        handler.removeCallbacks(tick);
+        openOwnIt(action, platform);
+        foreground = getPackageName();
+        handler.postDelayed(this::removeOverlay, 700);
     }
 
     private void openOwnIt(String action, String platform) {
@@ -181,6 +263,28 @@ public class GuardService extends AccessibilityService {
         i.putExtra("ownit_action", action);
         if (platform != null) i.putExtra("platform", platform);
         try { startActivity(i); } catch (Exception ignored) { }
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private Notification guardNotification() {
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm != null) {
+            NotificationChannel ch = new NotificationChannel(CHANNEL, "OwnIt Guard", NotificationManager.IMPORTANCE_MIN);
+            ch.setDescription("Shows that OwnIt Guard is running.");
+            ch.setShowBadge(false);
+            nm.createNotificationChannel(ch);
+        }
+        Intent open = new Intent(this, MainActivity.class);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pi = PendingIntent.getActivity(this, 2, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        return new Notification.Builder(this, CHANNEL)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("OwnIt Guard is on")
+                .setContentText("Open social apps through OwnIt.")
+                .setOngoing(true)
+                .setContentIntent(pi)
+                .build();
     }
 
     private void buzz() {
@@ -236,10 +340,11 @@ public class GuardService extends AccessibilityService {
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics()));
     }
 
-    @Override public void onInterrupt() { }
+    @Override public IBinder onBind(Intent intent) { return null; }
 
     @Override
     public void onDestroy() {
+        running = false;
         removeOverlay();
         handler.removeCallbacksAndMessages(null);
         super.onDestroy();

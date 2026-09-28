@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -13,7 +12,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.text.TextUtils;
 import android.view.View;
 import android.view.Window;
 import android.webkit.JavascriptInterface;
@@ -54,7 +52,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.2");
+        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.3");
         web.addJavascriptInterface(new Bridge(), "OwnItAndroid");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
@@ -92,6 +90,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        waitingFor = null;
+        GuardService.startIfReady(this);
         runJs("window.ownitResume && window.ownitResume()");
     }
 
@@ -160,16 +160,43 @@ public class MainActivity extends Activity {
     }
 
     private boolean isGuardOn() {
-        ComponentName me = new ComponentName(this, GuardService.class);
-        String enabled = Settings.Secure.getString(getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-        if (enabled == null) return false;
-        TextUtils.SimpleStringSplitter split = new TextUtils.SimpleStringSplitter(':');
-        split.setString(enabled);
-        for (String item : split) {
-            ComponentName c = ComponentName.unflattenFromString(item);
-            if (me.equals(c)) return true;
+        return Perms.guardReady(this);
+    }
+
+    /** While a settings page is open, watch for the permission and come straight back once it's on. */
+    private String waitingFor = null;
+    private final android.os.Handler watcher = new android.os.Handler(android.os.Looper.getMainLooper());
+
+    private void watchFor(String what) {
+        waitingFor = what;
+        final long started = System.currentTimeMillis();
+        watcher.removeCallbacksAndMessages(null);
+        watcher.postDelayed(new Runnable() {
+            @Override public void run() {
+                if (waitingFor == null || System.currentTimeMillis() - started > 5 * 60 * 1000L) return;
+                boolean ok = what.equals("overlay") ? Perms.overlay(MainActivity.this) : Perms.usage(MainActivity.this);
+                if (ok) {
+                    waitingFor = null;
+                    GuardService.startIfReady(MainActivity.this);
+                    Intent back = new Intent(MainActivity.this, MainActivity.class);
+                    back.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try { startActivity(back); } catch (Exception ignored) { }
+                    return;
+                }
+                watcher.postDelayed(this, 500);
+            }
+        }, 800);
+    }
+
+    private void openSettings(String action, boolean withPackage) {
+        Intent i = new Intent(action);
+        if (withPackage) i.setData(Uri.parse("package:" + getPackageName()));
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(i);
+        } catch (Exception e) {
+            if (withPackage) openSettings(action, false);
         }
-        return false;
     }
 
     private String installedPackage(String platform) {
@@ -250,13 +277,15 @@ public class MainActivity extends Activity {
                 JSONObject o = new JSONObject();
                 o.put("guardOn", isGuardOn());
                 o.put("notifyOn", Notifier.enabled(MainActivity.this));
-                o.put("version", "0.2");
+                o.put("overlayOn", Perms.overlay(MainActivity.this));
+                o.put("usageOn", Perms.usage(MainActivity.this));
+                o.put("version", "0.3");
                 o.put("allowed", GuardState.allowedPlatform(MainActivity.this));
                 o.put("until", GuardState.until(MainActivity.this));
                 o.put("tiktokInstalled", installedPackage("tiktok") != null);
                 o.put("instagramInstalled", installedPackage("instagram") != null);
                 o.put("youtubeInstalled", installedPackage("youtube") != null);
-                o.put("restrictedSettings", Build.VERSION.SDK_INT >= 33);
+                o.put("restrictedSettings", false);
                 return o.toString();
             } catch (Exception e) {
                 return "{}";
@@ -265,11 +294,27 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void openGuardSettings() {
-            GuardState.markSetupPending(MainActivity.this);
             runOnUiThread(() -> {
-                Intent i = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(i);
+                if (!Perms.overlay(MainActivity.this)) { openOverlaySettings(); return; }
+                if (!Perms.usage(MainActivity.this)) { openUsageSettings(); return; }
+                GuardService.startIfReady(MainActivity.this);
+                runJs("window.ownitResume && window.ownitResume()");
+            });
+        }
+
+        @JavascriptInterface
+        public void openOverlaySettings() {
+            runOnUiThread(() -> {
+                openSettings(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true);
+                watchFor("overlay");
+            });
+        }
+
+        @JavascriptInterface
+        public void openUsageSettings() {
+            runOnUiThread(() -> {
+                openSettings(Settings.ACTION_USAGE_ACCESS_SETTINGS, Build.VERSION.SDK_INT >= 29);
+                watchFor("usage");
             });
         }
 
