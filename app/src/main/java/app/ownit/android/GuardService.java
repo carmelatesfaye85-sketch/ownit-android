@@ -54,6 +54,13 @@ public class GuardService extends AccessibilityService {
     };
 
     @Override
+    protected void onServiceConnected() {
+        super.onServiceConnected();
+        // Just switched on from OwnIt's setup screen: bring the person straight back to OwnIt.
+        if (GuardState.consumeSetupPending(this)) handler.postDelayed(() -> openOwnIt("guard-on", null), 400);
+    }
+
+    @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null || event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         CharSequence pkgCs = event.getPackageName();
@@ -94,6 +101,7 @@ public class GuardService extends AccessibilityService {
         boolean stillInApp = platform != null && platform.equals(GuardState.allowedPlatform(this));
         GuardState.expire(this);
         if (stillInApp) showOverlay();
+        else Notifier.timeUp(this, GuardState.kind(this), GuardState.intent(this));
     }
 
     private void showOverlay() {

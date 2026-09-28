@@ -73,5 +73,14 @@ final class GuardState {
         prefs(c).edit().putLong("until", System.currentTimeMillis() + ms).putBoolean("extended", true).apply();
     }
 
+    /** Set when OwnIt sends you to the Accessibility screen, so the Guard can bring you back once it's on. */
+    static void markSetupPending(Context c) { prefs(c).edit().putLong("setup_pending", System.currentTimeMillis()).apply(); }
+
+    static boolean consumeSetupPending(Context c) {
+        long t = prefs(c).getLong("setup_pending", 0);
+        prefs(c).edit().remove("setup_pending").apply();
+        return t > 0 && System.currentTimeMillis() - t < 15 * 60 * 1000L;
+    }
+
     static void end(Context c) { prefs(c).edit().remove("allowed").putLong("until", 0).apply(); }
 }

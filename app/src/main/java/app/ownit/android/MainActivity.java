@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
     private WebView web;
     private boolean pageReady = false;
     private final List<String> pendingJs = new ArrayList<>();
+    private boolean askedNotifications = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,7 +54,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.1");
+        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.2");
         web.addJavascriptInterface(new Bridge(), "OwnItAndroid");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
@@ -91,6 +92,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        runJs("window.ownitResume && window.ownitResume()");
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
         runJs("window.ownitResume && window.ownitResume()");
     }
 
@@ -139,6 +146,8 @@ public class MainActivity extends Activity {
             runJs("window.ownitBlocked && window.ownitBlocked(" + JSONObject.quote(platform == null ? "" : platform) + ")");
         } else if (action.equals("timeup")) {
             runJs("window.ownitTimeUp && window.ownitTimeUp()");
+        } else if (action.equals("guard-on")) {
+            runJs("window.ownitResume && window.ownitResume()");
         }
     }
 
@@ -240,7 +249,8 @@ public class MainActivity extends Activity {
             try {
                 JSONObject o = new JSONObject();
                 o.put("guardOn", isGuardOn());
-                o.put("version", "0.1");
+                o.put("notifyOn", Notifier.enabled(MainActivity.this));
+                o.put("version", "0.2");
                 o.put("allowed", GuardState.allowedPlatform(MainActivity.this));
                 o.put("until", GuardState.until(MainActivity.this));
                 o.put("tiktokInstalled", installedPackage("tiktok") != null);
@@ -255,6 +265,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void openGuardSettings() {
+            GuardState.markSetupPending(MainActivity.this);
             runOnUiThread(() -> {
                 Intent i = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -268,6 +279,22 @@ public class MainActivity extends Activity {
                 Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 startActivity(i);
+            });
+        }
+
+        @JavascriptInterface
+        public void requestNotifications() {
+            runOnUiThread(() -> {
+                if (Notifier.enabled(MainActivity.this)) { runJs("window.ownitResume && window.ownitResume()"); return; }
+                if (Build.VERSION.SDK_INT >= 33 && !askedNotifications) {
+                    askedNotifications = true;
+                    requestPermissions(new String[] {"android.permission.POST_NOTIFICATIONS"}, 7);
+                } else {
+                    Intent i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                    i.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                }
             });
         }
 
