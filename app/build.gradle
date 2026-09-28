@@ -1,0 +1,46 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'app.ownit.android'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'app.ownit.android'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '0.1'
+    }
+
+    // A fixed key, so each new version installs over the old one.
+    signingConfigs {
+        ownit {
+            storeFile file('../keystore/ownit.jks')
+            storePassword 'ownit-app'
+            keyAlias 'ownit'
+            keyPassword 'ownit-app'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.ownit
+        }
+        debug {
+            signingConfig signingConfigs.ownit
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

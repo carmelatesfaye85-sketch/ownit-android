@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="OwnItTheme" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ownit_bg</item>
+        <item name="android:statusBarColor">@color/ownit_bg</item>
+        <item name="android:navigationBarColor">@color/ownit_bg</item>
+        <item name="android:colorAccent">@color/ownit_teal</item>
+    </style>
+    <color name="ownit_bg">#061513</color>
+    <color name="ownit_teal">#3FC2B2</color>
+</resources>
