@@ -51,6 +51,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="ownit" android:host="auth" />
             </intent-filter>
+            <!-- Share → OwnIt: save a video link into a category -->
+            <intent-filter android:label="@string/share_label">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <service
