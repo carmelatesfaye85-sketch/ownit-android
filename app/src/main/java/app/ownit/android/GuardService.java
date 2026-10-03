@@ -10,8 +10,11 @@ import android.app.usage.UsageStatsManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.PixelFormat;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.media.Ringtone;
@@ -168,9 +171,9 @@ public class GuardService extends Service {
     private void showBlocked(String platform) {
         String name = "tiktok".equals(platform) ? "TikTok" : "instagram".equals(platform) ? "Instagram" : "YouTube";
         LinearLayout box = screen();
-        box.addView(text("∞", 64, "#F0B155", true));
-        box.addView(text("Not so fast", 40, "#E8F3F0", true));
-        box.addView(text("You opened " + name + " directly. Say what you're looking for first, and OwnIt will take you straight to it.", 18, "#93B3AC", false));
+        box.addView(mark(96));
+        box.addView(text("Not so fast", 40, "#F2EFE6", true));
+        box.addView(text("You opened " + name + " directly. Say what you're looking for first, and OwnIt will take you straight to it.", 18, "#A3AECF", false));
         Button go = button("Open OwnIt", true);
         go.setOnClickListener(v -> goBackToOwnIt("blocked", platform));
         box.addView(go);
@@ -183,12 +186,12 @@ public class GuardService extends Service {
         LinearLayout box = screen();
         String kind = GuardState.kind(this);
         String intent = GuardState.intent(this);
-        box.addView(text("∞", 72, "#F0B155", true));
-        box.addView(text("Time's up", 44, "#E8F3F0", true));
+        box.addView(mark(112));
+        box.addView(text("Time's up", 44, "#F2EFE6", true));
         box.addView(text("search".equals(kind) && !intent.isEmpty()
                 ? "Did you find “" + intent + "”?"
-                : "Your scrolling time is over.", 20, "#93B3AC", false));
-        countdownView = text("Taking you back to OwnIt in " + COUNTDOWN_SECONDS + "…", 16, "#F0B155", false);
+                : "Your scrolling time is over.", 20, "#A3AECF", false));
+        countdownView = text("Taking you back to OwnIt in " + COUNTDOWN_SECONDS + "…", 16, "#F2EFE6", false);
         box.addView(countdownView);
 
         Button back = button("Back to OwnIt", true);
@@ -213,7 +216,7 @@ public class GuardService extends Service {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
-        box.setBackgroundColor(Color.parseColor("#FA061513"));
+        box.setBackgroundColor(Color.parseColor("#FA12224A"));
         int pad = dp(28);
         box.setPadding(pad, pad, pad, pad);
         box.setClickable(true);
@@ -305,13 +308,40 @@ public class GuardService extends Service {
         } catch (Exception ignored) { }
     }
 
+    /** The OwnIt mark: the open ring, the dot that stops it, and the bar. */
+    private View mark(int heightDp) {
+        View v = new View(this) {
+            private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final RectF oval = new RectF();
+            @Override protected void onDraw(Canvas c) {
+                float k = getHeight() / 488f;
+                float ox = (getWidth() - 652f * k) / 2f - 186f * k;
+                float oy = -268f * k;
+                p.setColor(Color.parseColor("#F2EFE6"));
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeCap(Paint.Cap.ROUND);
+                p.setStrokeWidth(83f * k);
+                oval.set(ox + 269f * k, oy + 351f * k, ox + 591f * k, oy + 673f * k);
+                c.drawArc(oval, -90f, -272.5f, false, p);
+                c.drawLine(ox + 756f * k, oy + 351f * k, ox + 756f * k, oy + 673f * k, p);
+                p.setStyle(Paint.Style.FILL);
+                c.drawCircle(ox + 544f * k, oy + 398f * k, 46f * k, p);
+            }
+        };
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(heightDp));
+        lp.bottomMargin = dp(22);
+        v.setLayoutParams(lp);
+        return v;
+    }
+
     private TextView text(String s, int sp, String color, boolean serif) {
         TextView tv = new TextView(this);
         tv.setText(s);
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
         tv.setTextColor(Color.parseColor(color));
         tv.setGravity(Gravity.CENTER);
-        if (serif) tv.setTypeface(Typeface.SERIF);
+        if (serif) tv.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(14);
@@ -324,11 +354,11 @@ public class GuardService extends Service {
         b.setText(label);
         b.setAllCaps(false);
         b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-        b.setTextColor(Color.parseColor(primary ? "#1B1204" : "#E8F3F0"));
+        b.setTextColor(Color.parseColor(primary ? "#12224A" : "#F2EFE6"));
         GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(dp(30));
-        if (primary) bg.setColor(Color.parseColor("#F0B155"));
-        else { bg.setColor(Color.TRANSPARENT); bg.setStroke(dp(1), Color.parseColor("#4DE8F3F0")); }
+        if (primary) bg.setColor(Color.parseColor("#F2EFE6"));
+        else { bg.setColor(Color.TRANSPARENT); bg.setStroke(dp(1), Color.parseColor("#4DF2EFE6")); }
         b.setBackground(bg);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(280), dp(56));
         lp.topMargin = dp(12);

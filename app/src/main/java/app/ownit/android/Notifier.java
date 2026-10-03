@@ -33,7 +33,7 @@ final class Notifier {
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("OwnIt Guard is off")
                 .setContentText("A permission was switched off. Tap to turn the Guard back on.")
-                .setColor(Color.parseColor("#0C6B65"))
+                .setColor(Color.parseColor("#12224A"))
                 .setAutoCancel(true)
                 .setContentIntent(pi)
                 .build();
@@ -61,7 +61,7 @@ final class Notifier {
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("Time's up")
                 .setContentText(body)
-                .setColor(Color.parseColor("#0C6B65"))
+                .setColor(Color.parseColor("#12224A"))
                 .setAutoCancel(true)
                 .setContentIntent(pi)
                 .setCategory(Notification.CATEGORY_REMINDER)
