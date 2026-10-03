@@ -6,6 +6,6 @@
         <item name="android:navigationBarColor">@color/ownit_bg</item>
         <item name="android:colorAccent">@color/ownit_teal</item>
     </style>
-    <color name="ownit_bg">#061513</color>
-    <color name="ownit_teal">#3FC2B2</color>
+    <color name="ownit_bg">#12224A</color>
+    <color name="ownit_teal">#F2EFE6</color>
 </resources>
