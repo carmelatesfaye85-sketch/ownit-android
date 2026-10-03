@@ -3,4 +3,5 @@
     <string name="app_name">OwnIt</string>
     <string name="guard_name">OwnIt Guard</string>
     <string name="guard_description">OwnIt Guard notices when you open TikTok, Instagram or YouTube. If you open them directly, it sends you to OwnIt first so you can say what you\'re looking for. When your chosen time is up, it covers the app and brings you back to OwnIt. OwnIt Guard only checks which app is open. It never reads what you watch, type or see.</string>
+    <string name="share_label">Save to OwnIt</string>
 </resources>
