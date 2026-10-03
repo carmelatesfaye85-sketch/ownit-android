@@ -109,7 +109,7 @@ public class GuardService extends Service {
 
     /** Finds the app in front, then blocks it, lets it through, or ends the visit. */
     private void check() {
-        if (!Perms.guardReady(this)) { stopSelf(); return; }
+        if (!Perms.guardReady(this)) { Notifier.guardOff(this); stopSelf(); return; }
         updateForeground();
         if (overlay != null) return;
         String pkg = foreground;

@@ -32,6 +32,16 @@ final class Perms {
         }
     }
 
+    /** True when the phone won't put OwnIt to sleep to save battery. */
+    static boolean battery(Context c) {
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) c.getSystemService(Context.POWER_SERVICE);
+            return pm != null && pm.isIgnoringBatteryOptimizations(c.getPackageName());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     static boolean guardReady(Context c) {
         return overlay(c) && usage(c);
     }

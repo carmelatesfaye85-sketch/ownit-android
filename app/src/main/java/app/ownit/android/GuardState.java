@@ -15,7 +15,7 @@ final class GuardState {
 
     static final Map<String, String[]> PACKAGES = new HashMap<>();
     static {
-        PACKAGES.put("tiktok", new String[] {"com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.zhiliaoapp.musically.go"});
+        PACKAGES.put("tiktok", new String[] {"com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.zhiliaoapp.musically.go", "com.ss.android.ugc.trill.go"});
         PACKAGES.put("instagram", new String[] {"com.instagram.android", "com.instagram.lite"});
         PACKAGES.put("youtube", new String[] {"com.google.android.youtube"});
     }

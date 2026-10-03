@@ -52,7 +52,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.4");
+        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.5");
         web.addJavascriptInterface(new Bridge(), "OwnItAndroid");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
@@ -186,7 +186,8 @@ public class MainActivity extends Activity {
         watcher.postDelayed(new Runnable() {
             @Override public void run() {
                 if (waitingFor == null || System.currentTimeMillis() - started > 5 * 60 * 1000L) return;
-                boolean ok = what.equals("overlay") ? Perms.overlay(MainActivity.this) : Perms.usage(MainActivity.this);
+                boolean ok = what.equals("overlay") ? Perms.overlay(MainActivity.this)
+                        : what.equals("battery") ? Perms.battery(MainActivity.this) : Perms.usage(MainActivity.this);
                 if (ok) {
                     waitingFor = null;
                     GuardService.startIfReady(MainActivity.this);
@@ -317,7 +318,8 @@ public class MainActivity extends Activity {
                 o.put("notifyOn", Notifier.enabled(MainActivity.this));
                 o.put("overlayOn", Perms.overlay(MainActivity.this));
                 o.put("usageOn", Perms.usage(MainActivity.this));
-                o.put("version", "0.4");
+                o.put("batteryOn", Perms.battery(MainActivity.this));
+                o.put("version", "0.5");
                 o.put("allowed", GuardState.allowedPlatform(MainActivity.this));
                 o.put("until", GuardState.until(MainActivity.this));
                 o.put("tiktokInstalled", installedPackage("tiktok") != null);
@@ -345,6 +347,20 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 openSettings(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true);
                 watchFor("overlay");
+            });
+        }
+
+        @JavascriptInterface
+        public void openBatterySettings() {
+            runOnUiThread(() -> {
+                try {
+                    Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName()));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception e) {
+                    openSettings(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS, false);
+                }
+                watchFor("battery");
             });
         }
 

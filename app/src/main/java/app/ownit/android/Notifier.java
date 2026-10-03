@@ -19,6 +19,27 @@ final class Notifier {
         return nm != null && nm.areNotificationsEnabled();
     }
 
+    /** Tells the person the Guard stopped because a permission was switched off. */
+    static void guardOff(Context c) {
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        if (nm == null || !nm.areNotificationsEnabled()) return;
+        NotificationChannel ch = new NotificationChannel("guard_off", "Guard turned off", NotificationManager.IMPORTANCE_HIGH);
+        ch.setDescription("Tells you when OwnIt Guard stops working.");
+        nm.createNotificationChannel(ch);
+        Intent open = new Intent(c, MainActivity.class);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pi = PendingIntent.getActivity(c, 4, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        Notification n = new Notification.Builder(c, "guard_off")
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("OwnIt Guard is off")
+                .setContentText("A permission was switched off. Tap to turn the Guard back on.")
+                .setColor(Color.parseColor("#0C6B65"))
+                .setAutoCancel(true)
+                .setContentIntent(pi)
+                .build();
+        nm.notify(8, n);
+    }
+
     static void timeUp(Context c, String kind, String intent) {
         NotificationManager nm = c.getSystemService(NotificationManager.class);
         if (nm == null || !nm.areNotificationsEnabled()) return;
