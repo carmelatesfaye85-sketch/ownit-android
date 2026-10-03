@@ -52,7 +52,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.3");
+        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.4");
         web.addJavascriptInterface(new Bridge(), "OwnItAndroid");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
@@ -136,6 +136,18 @@ public class MainActivity extends Activity {
                 runJs("window.ownitAuthCallback && window.ownitAuthCallback(" + JSONObject.quote(frag) + ")");
             }
             intent.setData(null);
+            return;
+        }
+        // Share → OwnIt from TikTok, Instagram, YouTube or anywhere else.
+        if (Intent.ACTION_SEND.equals(intent.getAction())) {
+            String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+            String subject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
+            intent.setAction(Intent.ACTION_MAIN);
+            intent.removeExtra(Intent.EXTRA_TEXT);
+            if (text != null && !text.trim().isEmpty()) {
+                String all = (subject != null && !text.contains(subject) ? subject + " " : "") + text;
+                runJs("window.ownitShare && window.ownitShare(" + JSONObject.quote(all) + ")");
+            }
             return;
         }
         String action = intent.getStringExtra("ownit_action");
@@ -256,6 +268,32 @@ public class MainActivity extends Activity {
         openExternal(url);
     }
 
+    /** TikTok's own link prefix depends on which TikTok app is installed. */
+    private static String schemeFor(String pkg) {
+        if ("com.ss.android.ugc.trill".equals(pkg)) return "snssdk1180";
+        if ("com.zhiliaoapp.musically.go".equals(pkg)) return "snssdk1340";
+        return "snssdk1233";
+    }
+
+    /** Opens one exact link inside the platform's app. Returns false if the app doesn't accept it. */
+    private boolean openLink(String platform, String url) {
+        String pkg = installedPackage(platform);
+        if (pkg == null) {
+            if (!url.startsWith("http")) return false;
+            openExternal(url);
+            return true;
+        }
+        Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url.replace("{scheme}", schemeFor(pkg))));
+        view.setPackage(pkg);
+        view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(view);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private void openExternal(String url) {
         try {
             Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
@@ -279,7 +317,7 @@ public class MainActivity extends Activity {
                 o.put("notifyOn", Notifier.enabled(MainActivity.this));
                 o.put("overlayOn", Perms.overlay(MainActivity.this));
                 o.put("usageOn", Perms.usage(MainActivity.this));
-                o.put("version", "0.3");
+                o.put("version", "0.4");
                 o.put("allowed", GuardState.allowedPlatform(MainActivity.this));
                 o.put("until", GuardState.until(MainActivity.this));
                 o.put("tiktokInstalled", installedPackage("tiktok") != null);
@@ -356,6 +394,42 @@ public class MainActivity extends Activity {
             GuardState.allow(MainActivity.this, platform, until, query, kind);
             final String p = platform;
             runOnUiThread(() -> openTarget(p, kind, query));
+        }
+
+        /** Starts a visit on one exact link (a tested search link, or a saved video). Returns "ok" or "none". */
+        @JavascriptInterface
+        public String startVisitUrl(String platform, String kind, String query, int minutes, String url) {
+            if (platform == null || platform.isEmpty()) platform = "tiktok";
+            if (url == null || url.isEmpty()) { startVisit(platform, kind, query, minutes); return "ok"; }
+            int m = Math.max(1, Math.min(minutes, 120));
+            GuardState.allow(MainActivity.this, platform, System.currentTimeMillis() + m * 60_000L, query, kind);
+            if (openLink(platform, url)) return "ok";
+            GuardState.end(MainActivity.this);
+            return "none";
+        }
+
+        /** Brings the app back to the front exactly where you left it (the visit keeps its timer). */
+        @JavascriptInterface
+        public String resumeApp(String platform) {
+            String pkg = installedPackage(platform);
+            Intent launch = pkg == null ? null : getPackageManager().getLaunchIntentForPackage(pkg);
+            if (launch == null) return "none";
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                startActivity(launch);
+                return "ok";
+            } catch (Exception e) {
+                return "none";
+            }
+        }
+
+        /** Looks up a shared video's title and picture, then calls window.ownitMeta(key, json). */
+        @JavascriptInterface
+        public void fetchMeta(String url, String key) {
+            new Thread(() -> {
+                String json = Meta.lookup(url);
+                runJs("window.ownitMeta && window.ownitMeta(" + JSONObject.quote(key) + "," + JSONObject.quote(json) + ")");
+            }).start();
         }
 
         @JavascriptInterface
