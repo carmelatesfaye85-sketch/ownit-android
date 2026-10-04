@@ -30,8 +30,8 @@ import java.util.List;
 
 /** Shows the OwnIt website and lets it talk to the Guard through the "OwnItAndroid" bridge. */
 public class MainActivity extends Activity {
-    private static final String HOME = "https://ownit-app.netlify.app/?app=android";
-    private static final String SITE_HOST = "ownit-app.netlify.app";
+    private static final String HOME = "https://carmelatesfaye85-sketch.github.io/?app=android";
+    private static final String SITE_HOST = "carmelatesfaye85-sketch.github.io";
 
     private WebView web;
     private boolean pageReady = false;
