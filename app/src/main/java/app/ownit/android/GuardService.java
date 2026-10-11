@@ -74,7 +74,7 @@ public class GuardService extends Service {
             try {
                 PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
                 if (pm != null && !pm.isInteractive()) next = 3000;
-                else check();
+                else { check(); Widget.refreshIfDue(GuardService.this); }
             } catch (Exception ignored) { }
             handler.postDelayed(this, next);
         }

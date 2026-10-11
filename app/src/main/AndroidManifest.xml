@@ -78,5 +78,31 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!-- Home screen widget: minutes left today and a quick search -->
+        <receiver
+            android:name=".Widget"
+            android:exported="false"
+            android:label="OwnIt">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
+        </receiver>
+
+        <!-- Hide Reels and Shorts (optional, switched on by the person in Accessibility settings) -->
+        <service
+            android:name=".ShortsService"
+            android:exported="false"
+            android:label="@string/shorts_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/shorts_service" />
+        </service>
     </application>
 </manifest>

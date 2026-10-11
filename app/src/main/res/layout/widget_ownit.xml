@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center_vertical"
+    android:padding="16dp"
+    android:background="@drawable/widget_bg">
+
+    <TextView
+        android:id="@+id/w_kicker"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="OwnIt"
+        android:textColor="#A3AECF"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/w_left"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Your day is yours"
+        android:textColor="#F2EFE6"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <TextView
+        android:id="@+id/w_sub"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="Open OwnIt to see your day."
+        android:textColor="#A3AECF"
+        android:textSize="13sp"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+    <TextView
+        android:id="@+id/w_search"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/widget_btn"
+        android:gravity="center"
+        android:text="What are you looking for?"
+        android:textColor="#12224A"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+</LinearLayout>

@@ -52,7 +52,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.5");
+        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.8");
         web.addJavascriptInterface(new Bridge(), "OwnItAndroid");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
@@ -158,6 +158,8 @@ public class MainActivity extends Activity {
             runJs("window.ownitBlocked && window.ownitBlocked(" + JSONObject.quote(platform == null ? "" : platform) + ")");
         } else if (action.equals("timeup")) {
             runJs("window.ownitTimeUp && window.ownitTimeUp()");
+        } else if (action.equals("search")) {
+            runJs("window.ownitWidget && window.ownitWidget()");
         } else if (action.equals("guard-on")) {
             runJs("window.ownitResume && window.ownitResume()");
         }
@@ -187,7 +189,8 @@ public class MainActivity extends Activity {
             @Override public void run() {
                 if (waitingFor == null || System.currentTimeMillis() - started > 5 * 60 * 1000L) return;
                 boolean ok = what.equals("overlay") ? Perms.overlay(MainActivity.this)
-                        : what.equals("battery") ? Perms.battery(MainActivity.this) : Perms.usage(MainActivity.this);
+                        : what.equals("battery") ? Perms.battery(MainActivity.this)
+                        : what.equals("shorts") ? ShortsService.enabled(MainActivity.this) : Perms.usage(MainActivity.this);
                 if (ok) {
                     waitingFor = null;
                     GuardService.startIfReady(MainActivity.this);
@@ -319,7 +322,10 @@ public class MainActivity extends Activity {
                 o.put("overlayOn", Perms.overlay(MainActivity.this));
                 o.put("usageOn", Perms.usage(MainActivity.this));
                 o.put("batteryOn", Perms.battery(MainActivity.this));
-                o.put("version", "0.5");
+                o.put("version", "0.8");
+                o.put("shortsOn", ShortsService.enabled(MainActivity.this));
+                o.put("hideShorts", ShortsService.wanted(MainActivity.this));
+                o.put("features", "usage,widget,shorts");
                 o.put("allowed", GuardState.allowedPlatform(MainActivity.this));
                 o.put("until", GuardState.until(MainActivity.this));
                 o.put("tiktokInstalled", installedPackage("tiktok") != null);
@@ -446,6 +452,31 @@ public class MainActivity extends Activity {
                 String json = Meta.lookup(url);
                 runJs("window.ownitMeta && window.ownitMeta(" + JSONObject.quote(key) + "," + JSONObject.quote(json) + ")");
             }).start();
+        }
+
+        /** Real minutes per app for the last `days` days, measured by the phone. */
+        @JavascriptInterface
+        public String usage(int days) {
+            return Usage.json(MainActivity.this, Math.max(1, Math.min(days, 14)));
+        }
+
+        /** Keeps the home screen widget up to date: {goal, used, streak}. */
+        @JavascriptInterface
+        public void setWidget(String json) {
+            Widget.save(MainActivity.this, json);
+        }
+
+        @JavascriptInterface
+        public void setHideShorts(boolean on) {
+            ShortsService.setWanted(MainActivity.this, on);
+        }
+
+        @JavascriptInterface
+        public void openAccessibilitySettings() {
+            runOnUiThread(() -> {
+                ShortsService.openSettings(MainActivity.this);
+                watchFor("shorts");
+            });
         }
 
         @JavascriptInterface
