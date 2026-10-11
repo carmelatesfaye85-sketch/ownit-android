@@ -102,6 +102,7 @@ public class GuardService extends Service {
             return START_NOT_STICKY;
         }
         if (!Perms.guardReady(this)) { stopSelf(); return START_NOT_STICKY; }
+        GuardState.init(this);
         if (!running) {
             running = true;
             lastEventTime = System.currentTimeMillis() - 10_000;
@@ -138,6 +139,8 @@ public class GuardService extends Service {
         long until = GuardState.until(this);
         if (until <= 0 || System.currentTimeMillis() < until) return;
         GuardState.expire(this);
+        // Ran out long ago (the phone was off or the Guard was asleep): just end it, no late alarm.
+        if (System.currentTimeMillis() - until > 30 * 60_000L) return;
         if (inAllowedApp) showTimeUp();
         else Notifier.timeUp(this, GuardState.kind(this), GuardState.intent(this));
     }
@@ -169,7 +172,7 @@ public class GuardService extends Service {
     // ---------------------------------------------------------------- screens
 
     private void showBlocked(String platform) {
-        String name = "tiktok".equals(platform) ? "TikTok" : "instagram".equals(platform) ? "Instagram" : "YouTube";
+        String name = GuardState.nameFor(platform);
         LinearLayout box = screen();
         box.addView(mark(96));
         box.addView(text("Not so fast", 40, "#F2EFE6", true));

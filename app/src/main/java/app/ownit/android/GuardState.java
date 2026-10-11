@@ -3,7 +3,14 @@ package app.ownit.android;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -20,11 +27,79 @@ final class GuardState {
         PACKAGES.put("youtube", new String[] {"com.google.android.youtube"});
     }
 
+    /** Apps the person added in OwnIt (Substack, their own…): id → {name, packages}. */
+    private static final Map<String, String[]> EXTRA = new LinkedHashMap<>();
+    private static final Map<String, String> EXTRA_NAMES = new HashMap<>();
+    private static boolean extrasLoaded = false;
+
     private GuardState() {}
 
-    static String platformFor(String pkg) {
+    /** Loads the added apps once. Call with any Context before looking apps up. */
+    static synchronized void init(Context c) {
+        if (extrasLoaded) return;
+        extrasLoaded = true;
+        parseExtras(prefs(c).getString("extra", "{}"));
+    }
+
+    /** Saves the added apps sent by the website: {"substack": {"name": "Substack", "pkgs": ["com.substack.app"]}, …}. */
+    static synchronized void setExtras(Context c, String json) {
+        prefs(c).edit().putString("extra", json == null ? "{}" : json).apply();
+        extrasLoaded = true;
+        parseExtras(json);
+    }
+
+    private static void parseExtras(String json) {
+        EXTRA.clear();
+        EXTRA_NAMES.clear();
+        try {
+            JSONObject o = new JSONObject(json == null ? "{}" : json);
+            Iterator<String> keys = o.keys();
+            while (keys.hasNext()) {
+                String id = keys.next();
+                if (PACKAGES.containsKey(id)) continue;
+                JSONObject a = o.optJSONObject(id);
+                if (a == null) continue;
+                JSONArray arr = a.optJSONArray("pkgs");
+                if (arr == null || arr.length() == 0) continue;
+                String[] pkgs = new String[arr.length()];
+                for (int i = 0; i < arr.length(); i++) pkgs[i] = arr.optString(i, "");
+                EXTRA.put(id, pkgs);
+                EXTRA_NAMES.put(id, a.optString("name", "this app"));
+            }
+        } catch (Exception ignored) { }
+    }
+
+    /** Every app OwnIt knows: TikTok, Instagram, YouTube, then the ones the person added. */
+    static synchronized List<String> allPlatforms() {
+        List<String> out = new ArrayList<>(Arrays.asList("tiktok", "instagram", "youtube"));
+        out.addAll(EXTRA.keySet());
+        return out;
+    }
+
+    static synchronized String[] packagesFor(String platform) {
+        if (platform == null) return null;
+        String[] p = PACKAGES.get(platform);
+        return p != null ? p : EXTRA.get(platform);
+    }
+
+    static synchronized boolean isExtra(String platform) {
+        return platform != null && EXTRA.containsKey(platform);
+    }
+
+    static synchronized String nameFor(String platform) {
+        if ("tiktok".equals(platform)) return "TikTok";
+        if ("instagram".equals(platform)) return "Instagram";
+        if ("youtube".equals(platform)) return "YouTube";
+        String n = EXTRA_NAMES.get(platform);
+        return n == null ? "this app" : n;
+    }
+
+    static synchronized String platformFor(String pkg) {
         if (pkg == null) return null;
         for (Map.Entry<String, String[]> e : PACKAGES.entrySet()) {
+            for (String p : e.getValue()) if (p.equals(pkg)) return e.getKey();
+        }
+        for (Map.Entry<String, String[]> e : EXTRA.entrySet()) {
             for (String p : e.getValue()) if (p.equals(pkg)) return e.getKey();
         }
         return null;

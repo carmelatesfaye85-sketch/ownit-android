@@ -14,7 +14,7 @@ import java.util.Map;
 
 /**
  * Real time spent in TikTok, Instagram and YouTube, measured by the phone (Usage access),
- * including time spent outside OwnIt. Only app names and times: never what's on the screen.
+ * including time spent outside OwnIt (and the apps the person added). Only app names and times: never what's on the screen.
  */
 final class Usage {
     private Usage() {}
@@ -36,9 +36,11 @@ final class Usage {
         return c.getTimeInMillis();
     }
 
-    /** Milliseconds per platform for each of the last `days` days (index 0 = oldest, last = today). */
-    static long[][] perDay(Context c, int days) {
-        long[][] out = new long[days][3];
+    /** Milliseconds per app for each of the last `days` days (index 0 = oldest, last = today). */
+    static Map<String, long[]> perDay(Context c, int days) {
+        GuardState.init(c);
+        Map<String, long[]> out = new HashMap<>();
+        for (String p : GuardState.allPlatforms()) out.put(p, new long[days]);
         if (!Perms.usage(c)) return out;
         UsageStatsManager usm = (UsageStatsManager) c.getSystemService(Context.USAGE_STATS_SERVICE);
         if (usm == null) return out;
@@ -64,7 +66,7 @@ final class Usage {
                 } else if (type == UsageEvents.Event.ACTIVITY_PAUSED || type == UsageEvents.Event.MOVE_TO_BACKGROUND
                         || type == UsageEvents.Event.ACTIVITY_STOPPED) {
                     Long start = openSince.remove(key);
-                    if (start != null) add(out, dayStart, index(platform), start, e.getTimeStamp());
+                    if (start != null) add(out.get(platform), dayStart, start, e.getTimeStamp());
                 }
             }
         } catch (Exception ignored) { }
@@ -72,28 +74,25 @@ final class Usage {
         for (Map.Entry<String, Long> open : openSince.entrySet()) {
             String pkg = open.getKey().substring(0, open.getKey().indexOf('/'));
             String platform = GuardState.platformFor(pkg);
-            if (platform != null && now - open.getValue() < 6 * 3_600_000L) add(out, dayStart, index(platform), open.getValue(), now);
+            if (platform != null && now - open.getValue() < 6 * 3_600_000L) add(out.get(platform), dayStart, open.getValue(), now);
         }
         return out;
     }
 
-    private static int index(String platform) {
-        return "tiktok".equals(platform) ? 0 : "instagram".equals(platform) ? 1 : 2;
-    }
-
     /** Splits one stretch of time across the days it covers. */
-    private static void add(long[][] out, long[] dayStart, int app, long a, long b) {
-        if (b <= a || b - a > 6 * 3_600_000L) return;
+    private static void add(long[] out, long[] dayStart, long a, long b) {
+        if (out == null || b <= a || b - a > 6 * 3_600_000L) return;
         for (int d = 0; d < out.length; d++) {
             long s = Math.max(a, dayStart[d]), t = Math.min(b, dayStart[d + 1]);
-            if (t > s) out[d][app] += t - s;
+            if (t > s) out[d] += t - s;
         }
     }
 
-    /** Minutes spent today in all three apps together. */
+    /** Minutes spent today in all the apps OwnIt knows, together. */
     static int todayMinutes(Context c) {
-        long[][] d = perDay(c, 1);
-        return (int) ((d[0][0] + d[0][1] + d[0][2]) / 60_000L);
+        long total = 0;
+        for (long[] d : perDay(c, 1).values()) total += d[0];
+        return (int) (total / 60_000L);
     }
 
     /** JSON for the website: {ok, days:[{day:"2026-10-11", tiktok:12, instagram:3, youtube:0}, ...]} (minutes). */
@@ -102,15 +101,13 @@ final class Usage {
             JSONObject o = new JSONObject();
             o.put("ok", Perms.usage(c));
             org.json.JSONArray arr = new org.json.JSONArray();
-            long[][] d = perDay(c, days);
+            Map<String, long[]> d = perDay(c, days);
             long today = startOfDay(System.currentTimeMillis());
             SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
             for (int i = 0; i < days; i++) {
                 JSONObject day = new JSONObject();
                 day.put("day", f.format(addDays(today, i - (days - 1))));
-                day.put("tiktok", Math.round(d[i][0] / 60_000.0));
-                day.put("instagram", Math.round(d[i][1] / 60_000.0));
-                day.put("youtube", Math.round(d[i][2] / 60_000.0));
+                for (Map.Entry<String, long[]> app : d.entrySet()) day.put(app.getKey(), Math.round(app.getValue()[i] / 60_000.0));
                 arr.put(day);
             }
             o.put("days", arr);

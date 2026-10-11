@@ -22,6 +22,22 @@
         <package android:name="com.instagram.android" />
         <package android:name="com.instagram.lite" />
         <package android:name="com.google.android.youtube" />
+        <!-- Apps people can add in OwnIt -->
+        <package android:name="com.substack.app" />
+        <package android:name="com.twitter.android" />
+        <package android:name="com.facebook.katana" />
+        <package android:name="com.facebook.lite" />
+        <package android:name="com.reddit.frontpage" />
+        <package android:name="com.pinterest" />
+        <package android:name="com.linkedin.android" />
+        <package android:name="com.instagram.barcelona" />
+        <package android:name="com.snapchat.android" />
+        <package android:name="org.telegram.messenger" />
+        <!-- "Add an app": list the apps on this phone that can be opened -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
@@ -76,8 +92,14 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+        <!-- Wakes the Guard when a visit's time is up -->
+        <receiver
+            android:name=".TimeUp"
+            android:exported="false" />
+
         <!-- Home screen widget: minutes left today and a quick search -->
         <receiver
             android:name=".Widget"

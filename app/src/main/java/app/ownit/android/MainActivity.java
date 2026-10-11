@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        GuardState.init(this);
         Window w = getWindow();
         w.setStatusBarColor(Color.parseColor("#12224A"));
         w.setNavigationBarColor(Color.parseColor("#12224A"));
@@ -52,7 +53,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.8");
+        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.9");
         web.addJavascriptInterface(new Bridge(), "OwnItAndroid");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
@@ -216,7 +217,7 @@ public class MainActivity extends Activity {
     }
 
     private String installedPackage(String platform) {
-        String[] pkgs = GuardState.PACKAGES.get(platform);
+        String[] pkgs = GuardState.packagesFor(platform);
         if (pkgs == null) return null;
         PackageManager pm = getPackageManager();
         for (String p : pkgs) {
@@ -294,8 +295,16 @@ public class MainActivity extends Activity {
             startActivity(view);
             return true;
         } catch (Exception e) {
-            return false;
+            if (!GuardState.isExtra(platform)) return false;
         }
+        // An app you added that doesn't open links: open the app itself.
+        Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
+        if (launch != null) {
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try { startActivity(launch); return true; } catch (Exception ignored) { }
+        }
+        if (url.startsWith("http")) { openExternal(url); return true; }
+        return false;
     }
 
     private void openExternal(String url) {
@@ -322,10 +331,10 @@ public class MainActivity extends Activity {
                 o.put("overlayOn", Perms.overlay(MainActivity.this));
                 o.put("usageOn", Perms.usage(MainActivity.this));
                 o.put("batteryOn", Perms.battery(MainActivity.this));
-                o.put("version", "0.8");
+                o.put("version", "0.9");
                 o.put("shortsOn", ShortsService.enabled(MainActivity.this));
                 o.put("hideShorts", ShortsService.wanted(MainActivity.this));
-                o.put("features", "usage,widget,shorts");
+                o.put("features", "usage,widget,shorts,apps");
                 o.put("allowed", GuardState.allowedPlatform(MainActivity.this));
                 o.put("until", GuardState.until(MainActivity.this));
                 o.put("tiktokInstalled", installedPackage("tiktok") != null);
@@ -414,6 +423,7 @@ public class MainActivity extends Activity {
             int m = Math.max(1, Math.min(minutes, 120));
             long until = System.currentTimeMillis() + m * 60_000L;
             GuardState.allow(MainActivity.this, platform, until, query, kind);
+            TimeUp.schedule(MainActivity.this, until);
             final String p = platform;
             runOnUiThread(() -> openTarget(p, kind, query));
         }
@@ -424,7 +434,9 @@ public class MainActivity extends Activity {
             if (platform == null || platform.isEmpty()) platform = "tiktok";
             if (url == null || url.isEmpty()) { startVisit(platform, kind, query, minutes); return "ok"; }
             int m = Math.max(1, Math.min(minutes, 120));
-            GuardState.allow(MainActivity.this, platform, System.currentTimeMillis() + m * 60_000L, query, kind);
+            long until = System.currentTimeMillis() + m * 60_000L;
+            GuardState.allow(MainActivity.this, platform, until, query, kind);
+            TimeUp.schedule(MainActivity.this, until);
             if (openLink(platform, url)) return "ok";
             GuardState.end(MainActivity.this);
             return "none";
@@ -452,6 +464,40 @@ public class MainActivity extends Activity {
                 String json = Meta.lookup(url);
                 runJs("window.ownitMeta && window.ownitMeta(" + JSONObject.quote(key) + "," + JSONObject.quote(json) + ")");
             }).start();
+        }
+
+        /** The apps someone added in OwnIt, so the Guard can guard them and count their time. */
+        @JavascriptInterface
+        public void setExtraApps(String json) {
+            GuardState.setExtras(MainActivity.this, json);
+        }
+
+        /** Apps on this phone that can be opened, for "Add an app": [{pkg, label}], sorted by name. */
+        @JavascriptInterface
+        public String installedApps() {
+            try {
+                PackageManager pm = getPackageManager();
+                Intent main = new Intent(Intent.ACTION_MAIN);
+                main.addCategory(Intent.CATEGORY_LAUNCHER);
+                java.util.List<android.content.pm.ResolveInfo> list = pm.queryIntentActivities(main, 0);
+                java.util.TreeMap<String, String> sorted = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+                for (android.content.pm.ResolveInfo r : list) {
+                    String pkg = r.activityInfo.packageName;
+                    if (pkg.equals(getPackageName())) continue;
+                    String label = String.valueOf(r.loadLabel(pm));
+                    if (!sorted.containsKey(label)) sorted.put(label, pkg);
+                }
+                org.json.JSONArray arr = new org.json.JSONArray();
+                for (java.util.Map.Entry<String, String> e : sorted.entrySet()) {
+                    JSONObject a = new JSONObject();
+                    a.put("pkg", e.getValue());
+                    a.put("label", e.getKey());
+                    arr.put(a);
+                }
+                return arr.toString();
+            } catch (Exception e) {
+                return "[]";
+            }
         }
 
         /** Real minutes per app for the last `days` days, measured by the phone. */
