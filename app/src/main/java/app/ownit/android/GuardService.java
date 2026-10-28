@@ -192,7 +192,7 @@ public class GuardService extends Service {
         box.addView(mark(112));
         box.addView(text("Time's up", 44, "#F2EFE6", true));
         box.addView(text("search".equals(kind) && !intent.isEmpty()
-                ? "Did you find “" + intent + "”?"
+                ? "Your time for “" + intent + "” is over."
                 : "Your scrolling time is over.", 20, "#A3AECF", false));
         countdownView = text("Taking you back to OwnIt in " + COUNTDOWN_SECONDS + "…", 16, "#F2EFE6", false);
         box.addView(countdownView);

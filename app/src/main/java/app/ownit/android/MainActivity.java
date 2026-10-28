@@ -53,7 +53,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.9");
+        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.10");
         web.addJavascriptInterface(new Bridge(), "OwnItAndroid");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
@@ -331,10 +331,10 @@ public class MainActivity extends Activity {
                 o.put("overlayOn", Perms.overlay(MainActivity.this));
                 o.put("usageOn", Perms.usage(MainActivity.this));
                 o.put("batteryOn", Perms.battery(MainActivity.this));
-                o.put("version", "0.9");
+                o.put("version", "0.10");
                 o.put("shortsOn", ShortsService.enabled(MainActivity.this));
                 o.put("hideShorts", ShortsService.wanted(MainActivity.this));
-                o.put("features", "usage,widget,shorts,apps");
+                o.put("features", "usage,widget,shorts,apps,stay");
                 o.put("allowed", GuardState.allowedPlatform(MainActivity.this));
                 o.put("until", GuardState.until(MainActivity.this));
                 o.put("tiktokInstalled", installedPackage("tiktok") != null);
@@ -424,6 +424,7 @@ public class MainActivity extends Activity {
             long until = System.currentTimeMillis() + m * 60_000L;
             GuardState.allow(MainActivity.this, platform, until, query, kind);
             TimeUp.schedule(MainActivity.this, until);
+            GuardState.setUrl(MainActivity.this, targetUrl(platform, kind, query));
             final String p = platform;
             runOnUiThread(() -> openTarget(p, kind, query));
         }
@@ -437,6 +438,7 @@ public class MainActivity extends Activity {
             long until = System.currentTimeMillis() + m * 60_000L;
             GuardState.allow(MainActivity.this, platform, until, query, kind);
             TimeUp.schedule(MainActivity.this, until);
+            GuardState.setUrl(MainActivity.this, url);
             if (openLink(platform, url)) return "ok";
             GuardState.end(MainActivity.this);
             return "none";

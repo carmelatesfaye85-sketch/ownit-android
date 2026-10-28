@@ -5,6 +5,6 @@
     <string name="guard_description">OwnIt Guard notices when you open TikTok, Instagram or YouTube. If you open them directly, it sends you to OwnIt first so you can say what you\'re looking for. When your chosen time is up, it covers the app and brings you back to OwnIt. OwnIt Guard only checks which app is open. It never reads what you watch, type or see.</string>
     <string name="share_label">Save to OwnIt</string>
     <string name="widget_description">Your minutes left today, and a quick way to search on purpose.</string>
-    <string name="shorts_name">OwnIt: hide Reels and Shorts</string>
-    <string name="shorts_description">When you open Reels in Instagram or Shorts in YouTube, OwnIt takes you one step back, so you stay with what you came for. To do this, Android lets it look at the screen of those two apps; OwnIt only checks whether the Reels or Shorts player is showing. It never saves or sends anything. Scroll on purpose visits in OwnIt are left alone.</string>
+    <string name="shorts_name">OwnIt: stay on what you came for</string>
+    <string name="shorts_description">During a search visit started in OwnIt, OwnIt keeps you on your search: if TikTok\'s For You feed opens, it takes you back to your results. When you open Reels in Instagram or Shorts in YouTube, swiping on to the next one takes you one step back. To do this, Android lets it look at the screen of those apps; OwnIt only checks which part of the app is showing. It never saves or sends anything. Scroll on purpose visits are left alone.</string>
 </resources>

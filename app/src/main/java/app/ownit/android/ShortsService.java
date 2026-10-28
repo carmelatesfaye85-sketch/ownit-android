@@ -68,10 +68,12 @@ public class ShortsService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event == null || !wanted(this)) return;
+        if (event == null) return;
         CharSequence pkgCs = event.getPackageName();
         if (pkgCs == null) return;
         String platform = GuardState.platformFor(pkgCs.toString());
+        if ("tiktok".equals(platform)) { keepOnSearch(pkgCs.toString()); return; }
+        if (!wanted(this)) return;
         if (!"youtube".equals(platform) && !"instagram".equals(platform)) return;
         // A "Scroll on purpose" visit: the person chose to scroll, so leave it alone.
         if (platform.equals(GuardState.allowedPlatform(this)) && GuardState.until(this) > System.currentTimeMillis()
@@ -96,6 +98,59 @@ public class ShortsService extends AccessibilityService {
             try { Toast.makeText(this, "OwnIt: one at a time. " + what + " are hidden.", Toast.LENGTH_SHORT).show(); }
             catch (Exception ignored) { }
         });
+    }
+
+    private long lastCheck = 0, lastRedirect = 0;
+
+    /**
+     * During a search visit started in OwnIt, TikTok's own feed (the For You / Following tabs) is off limits:
+     * OwnIt opens the search again. Scroll on purpose visits are left alone.
+     */
+    private void keepOnSearch(String pkg) {
+        long now = System.currentTimeMillis();
+        if (now - lastCheck < 700 || now - lastRedirect < 2500) return;
+        lastCheck = now;
+        if (!"tiktok".equals(GuardState.allowedPlatform(this)) || GuardState.until(this) <= now
+                || !"search".equals(GuardState.kind(this))) return;
+        String url = GuardState.url(this);
+        if (url.isEmpty() || !onTikTokFeed()) return;
+        lastRedirect = now;
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url));
+            i.setPackage(pkg);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            startActivity(i);
+        } catch (Exception e) {
+            performGlobalAction(GLOBAL_ACTION_BACK);
+        }
+        handler.post(() -> {
+            try { Toast.makeText(this, "OwnIt: back to your search. The feed is closed for this visit.", Toast.LENGTH_SHORT).show(); }
+            catch (Exception ignored) { }
+        });
+    }
+
+    /** True when TikTok shows its home feed: the "For You" and "Following" tabs near the top of the screen. */
+    private boolean onTikTokFeed() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+        try {
+            int top = (int) (getResources().getDisplayMetrics().heightPixels * 0.25);
+            return nearTop(root.findAccessibilityNodeInfosByText("For You"), top)
+                    && nearTop(root.findAccessibilityNodeInfosByText("Following"), top);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean nearTop(List<AccessibilityNodeInfo> nodes, int top) {
+        if (nodes == null) return false;
+        Rect r = new Rect();
+        for (AccessibilityNodeInfo n : nodes) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            n.getBoundsInScreen(r);
+            if (r.top < top) return true;
+        }
+        return false;
     }
 
     /** A scroll by something almost as tall as the screen: swiping to the next video, not reading comments. */

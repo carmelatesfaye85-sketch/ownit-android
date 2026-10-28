@@ -135,6 +135,10 @@ final class GuardState {
                 && System.currentTimeMillis() < p.getLong("until", 0);
     }
 
+    /** The exact link the visit opened, so OwnIt can bring you back to it. */
+    static void setUrl(Context c, String url) { prefs(c).edit().putString("url", url == null ? "" : url).apply(); }
+    static String url(Context c) { return prefs(c).getString("url", ""); }
+
     static String allowedPlatform(Context c) { return prefs(c).getString("allowed", ""); }
     static long until(Context c) { return prefs(c).getLong("until", 0); }
     static String intent(Context c) { return prefs(c).getString("intent", ""); }
