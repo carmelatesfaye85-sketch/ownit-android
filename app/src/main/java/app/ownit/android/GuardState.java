@@ -138,6 +138,9 @@ final class GuardState {
     /** The exact link the visit opened, so OwnIt can bring you back to it. */
     static void setUrl(Context c, String url) { prefs(c).edit().putString("url", url == null ? "" : url).apply(); }
     static String url(Context c) { return prefs(c).getString("url", ""); }
+    /** A TikTok search that OwnIt still has to type in (see ShortsService). */
+    static void setSearchPending(Context c, boolean on) { prefs(c).edit().putBoolean("searchPending", on).apply(); }
+    static boolean searchPending(Context c) { return prefs(c).getBoolean("searchPending", false); }
 
     static String allowedPlatform(Context c) { return prefs(c).getString("allowed", ""); }
     static long until(Context c) { return prefs(c).getLong("until", 0); }

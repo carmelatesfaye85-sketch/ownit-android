@@ -53,7 +53,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.10");
+        s.setUserAgentString(s.getUserAgentString() + " OwnItAndroid/0.11");
         web.addJavascriptInterface(new Bridge(), "OwnItAndroid");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
@@ -273,6 +273,40 @@ public class MainActivity extends Activity {
         openExternal(url);
     }
 
+    /**
+     * Backup for when TikTok won't take the search link: open TikTok fresh on its home screen and let
+     * OwnIt (the "Stay on what you came for" service) type the search in. Only when that service is on.
+     */
+    private boolean openTikTokForSearch() {
+        if (!ShortsService.enabled(this)) return false;
+        String pkg = installedPackage("tiktok");
+        Intent launch = pkg == null ? null : getPackageManager().getLaunchIntentForPackage(pkg);
+        if (launch == null) return false;
+        GuardState.setSearchPending(this, true);
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        try {
+            startActivity(launch);
+            ShortsService.searchSoon();
+            return true;
+        } catch (Exception e) {
+            GuardState.setSearchPending(this, false);
+            return false;
+        }
+    }
+
+    /** Puts the search on the clipboard. Without "Stay on what you came for", OwnIt also says how to use it. */
+    private void copySearch(String q) {
+        if (q == null || q.trim().isEmpty()) return;
+        runOnUiThread(() -> {
+            try {
+                ClipboardManager cb = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                cb.setPrimaryClip(ClipData.newPlainText("OwnIt search", q.trim()));
+                if (!ShortsService.enabled(MainActivity.this))
+                    Toast.makeText(this, "Search copied. If TikTok opens on its feed, tap the search icon and paste.", Toast.LENGTH_LONG).show();
+            } catch (Exception ignored) { }
+        });
+    }
+
     /** TikTok's own link prefix depends on which TikTok app is installed. */
     private static String schemeFor(String pkg) {
         if ("com.ss.android.ugc.trill".equals(pkg)) return "snssdk1180";
@@ -331,10 +365,10 @@ public class MainActivity extends Activity {
                 o.put("overlayOn", Perms.overlay(MainActivity.this));
                 o.put("usageOn", Perms.usage(MainActivity.this));
                 o.put("batteryOn", Perms.battery(MainActivity.this));
-                o.put("version", "0.10");
+                o.put("version", "0.11");
                 o.put("shortsOn", ShortsService.enabled(MainActivity.this));
                 o.put("hideShorts", ShortsService.wanted(MainActivity.this));
-                o.put("features", "usage,widget,shorts,apps,stay");
+                o.put("features", "usage,widget,shorts,apps,stay,autosearch");
                 o.put("allowed", GuardState.allowedPlatform(MainActivity.this));
                 o.put("until", GuardState.until(MainActivity.this));
                 o.put("tiktokInstalled", installedPackage("tiktok") != null);
@@ -425,6 +459,10 @@ public class MainActivity extends Activity {
             GuardState.allow(MainActivity.this, platform, until, query, kind);
             TimeUp.schedule(MainActivity.this, until);
             GuardState.setUrl(MainActivity.this, targetUrl(platform, kind, query));
+            if ("tiktok".equals(platform) && "search".equals(kind)) {
+                copySearch(query);
+                if (ShortsService.enabled(MainActivity.this)) { GuardState.setSearchPending(MainActivity.this, true); ShortsService.searchSoon(); }
+            }
             final String p = platform;
             runOnUiThread(() -> openTarget(p, kind, query));
         }
@@ -439,7 +477,15 @@ public class MainActivity extends Activity {
             GuardState.allow(MainActivity.this, platform, until, query, kind);
             TimeUp.schedule(MainActivity.this, until);
             GuardState.setUrl(MainActivity.this, url);
-            if (openLink(platform, url)) return "ok";
+            boolean tikSearch = "tiktok".equals(platform) && "search".equals(kind);
+            if (tikSearch) {
+                copySearch(query);
+                // The search link still goes first and usually lands right on the results.
+                // OwnIt only types the search in if TikTok shows its feed instead.
+                if (ShortsService.enabled(MainActivity.this)) GuardState.setSearchPending(MainActivity.this, true);
+            }
+            if (openLink(platform, url)) { if (tikSearch) ShortsService.searchSoon(); return "ok"; }
+            if (tikSearch && openTikTokForSearch()) return "ok";
             GuardState.end(MainActivity.this);
             return "none";
         }
